@@ -69,6 +69,20 @@ function App() {
     };
   }, [room]);
 
+  // Debounced Thinking Log Sync
+  useEffect(() => {
+    if (!gameState || myMessage === (playerId === gameState.p1 ? gameState.messages.p1 : gameState.messages.p2)) return;
+    if (gameState.currentPhase === 'SHOCK' || gameState.currentPhase === 'GAME_OVER') return;
+
+    const timer = setTimeout(() => {
+      const key = playerId === gameState.p1 ? 'p1' : 'p2';
+      const updatedMessages = { ...gameState.messages, [key]: myMessage };
+      updateRemoteState({ ...gameState, messages: updatedMessages });
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [myMessage, gameState?.currentPhase]);
+
   useEffect(() => {
     if (!room) {
       gsap.from('.death-game-logo', { y: -50, opacity: 0, duration: 2, ease: 'expo.out' });
@@ -329,6 +343,9 @@ function App() {
     const { data } = await supabase.from('rooms').select('state').eq('id', room.id).single();
     let newState = data.state;
 
+    // Clear messages for next round but history is kept
+    newState.messages = { p1: '', p2: '' };
+
     const seatingPid = newState.seatingSide === newState.p1 ? 'p1' : 'p2';
     const chairNum = newState.selectedChairId;
 
@@ -381,7 +398,7 @@ function App() {
     }
 
     updateRemoteState(newState);
-    setMyMessage('');
+    setMyMessage(''); // Clear local message for the new round
   };
 
   // UI Components
