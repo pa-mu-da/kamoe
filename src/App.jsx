@@ -131,8 +131,7 @@ function App() {
     proposedChairId: null, // New field for single-click focus
     lastResult: null,
     messages: { p1: '', p2: '' },
-    revealedMessages: { p1: '', p2: '' },
-    discloseMessages: { p1: true, p2: true }, // Whether to reveal at turn end
+    thoughtHistory: [], // Cumulative list of { name, message, roundTag }
     proposedShockChairId: null, // Confirmation for switch side
     history: [], // Array of { round: number, isUra: boolean, seatingSide: string, score: number, isShocked: boolean }
     names: { p1: 'PLAYER 1', p2: 'PLAYER 2' },
@@ -295,17 +294,19 @@ function App() {
     // Capture switch side's message at time of push
     const updatedMessages = { ...gameState.messages, [playerId]: myMessage };
 
-    // Conditionally reveal based on toggle
-    const revealedPayload = { ...gameState.revealedMessages }; // Start with existing reveals
-    if (gameState.discloseMessages.p1) revealedPayload.p1 = updatedMessages.p1;
-    if (gameState.discloseMessages.p2) revealedPayload.p2 = updatedMessages.p2;
+    // Record into history
+    const roundLabel = `${gameState.currentRound}回戦 ${gameState.isUra ? '裏' : '表'}`;
+    const newEntries = [
+      { id: Date.now() + '_p1', name: gameState.names.p1, message: updatedMessages.p1, tag: roundLabel },
+      { id: Date.now() + '_p2', name: gameState.names.p2, message: updatedMessages.p2, tag: roundLabel }
+    ].filter(e => e.message.trim() !== '');
 
     const newState = {
       ...gameState,
       currentPhase: 'SHOCK',
       lastResult: { chairId: gameState.selectedChairId, safe: !isShocked },
       messages: updatedMessages,
-      revealedMessages: revealedPayload
+      thoughtHistory: [...(gameState.thoughtHistory || []), ...newEntries]
     };
     updateRemoteState(newState);
 
@@ -376,7 +377,7 @@ function App() {
       newState.selectedChairId = null;
       newState.proposedChairId = null;
       newState.messages = { p1: '', p2: '' };
-      // Keep revealedMessages so players can read them during the next turn
+      // thoughtHistory is already updated in handlePushButton
     }
 
     updateRemoteState(newState);
@@ -676,41 +677,22 @@ function App() {
               onChange={(e) => setMyMessage(e.target.value)}
               disabled={gameState.currentPhase === 'SHOCK'}
             />
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
-              <input
-                type="checkbox"
-                id="disclosure-toggle"
-                checked={gameState.discloseMessages[playerId === gameState.p1 ? 'p1' : 'p2']}
-                onChange={(e) => {
-                  const key = playerId === gameState.p1 ? 'p1' : 'p2';
-                  updateRemoteState({
-                    ...gameState,
-                    discloseMessages: { ...gameState.discloseMessages, [key]: e.target.checked }
-                  });
-                }}
-              />
-              <label htmlFor="disclosure-toggle" className="mono" style={{ fontSize: '0.7rem', cursor: 'pointer' }}>
-                ターン終了時にこの内容を公開する
-              </label>
-            </div>
           </div>
           <div className="message-box">
-            <label className="mono"><LucideHistory size={12} /> 公開された思考</label>
-            <div className="message-display mono">
-              {gameState.currentPhase === 'SHOCK' || gameState.revealedMessages.p1 || gameState.revealedMessages.p2 ? (
-                <>
-                  <div style={{ color: 'var(--accent-blue)', marginBottom: '0.5rem' }}>
-                    --- 公開された通信ログ ---
+            <label className="mono"><LucideHistory size={12} /> 公開された思考ログ</label>
+            <div className="message-display mono history-mode">
+              {gameState.thoughtHistory && gameState.thoughtHistory.length > 0 ? (
+                gameState.thoughtHistory.map((log) => (
+                  <div key={log.id} className="history-item">
+                    <div className="history-meta">
+                      <span className="log-tag">{log.tag}</span>
+                      <span className="log-name">{log.name}</span>
+                    </div>
+                    <div className="log-content">{log.message}</div>
                   </div>
-                  <div style={{ marginBottom: '0.5rem' }}>
-                    <span style={{ color: 'var(--accent-yellow)' }}>{gameState.names.p1}:</span> {gameState.revealedMessages.p1 || '(非公開)'}
-                  </div>
-                  <div>
-                    <span style={{ color: 'var(--accent-yellow)' }}>{gameState.names.p2}:</span> {gameState.revealedMessages.p2 || '(非公開)'}
-                  </div>
-                </>
+                ))
               ) : (
-                "ターン終了後に公開されます"
+                <div style={{ opacity: 0.3 }}>ターン終了時にログが公開されます</div>
               )}
             </div>
           </div>
