@@ -16,6 +16,8 @@ function App() {
   const [myMessage, setMyMessage] = useState('');
   const [showScoreboard, setShowScoreboard] = useState(false);
   const [localName, setLocalName] = useState('');
+  const [localProposedChairId, setLocalProposedChairId] = useState(null);
+  const [localProposedShockChairId, setLocalProposedShockChairId] = useState(null);
 
   // Initialize Player ID
   useEffect(() => {
@@ -126,6 +128,10 @@ function App() {
         });
       }
     }
+
+    // Reset local optimistic states on phase change
+    setLocalProposedChairId(gameState.proposedChairId);
+    setLocalProposedShockChairId(gameState.proposedShockChairId);
   }, [gameState?.currentPhase]);
 
   // Initial State Helper
@@ -245,6 +251,7 @@ function App() {
   // Game Handlers
   const handleSetShock = (chairId) => {
     if (gameState.currentPhase !== 'PREPARE' || playerId !== gameState.switchSide) return;
+    setLocalProposedShockChairId(chairId);
     const newState = { ...gameState, proposedShockChairId: chairId };
     updateRemoteState(newState);
   };
@@ -267,6 +274,7 @@ function App() {
   };
 
   const handleCancelShock = () => {
+    setLocalProposedShockChairId(null);
     const newState = { ...gameState, proposedShockChairId: null, currentPhase: 'PREPARE' };
     updateRemoteState(newState);
   };
@@ -281,6 +289,7 @@ function App() {
       proposedChairId: null,
       statusMessage: `${name} は椅子を立ちました`
     };
+    setLocalProposedChairId(null);
     updateRemoteState(newState);
     // Clear message after 3 seconds
     setTimeout(async () => {
@@ -293,6 +302,7 @@ function App() {
 
   const handleProposeChair = (chairId) => {
     if (gameState.currentPhase !== 'SELECT' || playerId !== gameState.seatingSide) return;
+    setLocalProposedChairId(chairId);
     const newState = { ...gameState, proposedChairId: chairId };
     updateRemoteState(newState);
   };
@@ -428,6 +438,8 @@ function App() {
 
     updateRemoteState(newState);
     setMyMessage(''); // Clear local message for the new round
+    setLocalProposedChairId(null);
+    setLocalProposedShockChairId(null);
   };
 
   // UI Components
@@ -637,17 +649,11 @@ function App() {
         </div>
       </div>
 
-      {gameState.currentPhase === 'FINALIZED' && (
+      {gameState.currentPhase === 'FINALIZED' && isMyTurnAsSwitch && (
         <div className="shock-button-container top-position">
-          {isMyTurnAsSwitch ? (
-            <button onClick={handlePushButton} className="heavy-btn huge">
-              電撃スイッチ ON
-            </button>
-          ) : isMyTurnAsSeating && (
-            <button onClick={handleStandUp} className="heavy-btn huge stand-up-btn">
-              椅子を立つ
-            </button>
-          )}
+          <button onClick={handlePushButton} className="heavy-btn huge">
+            電撃スイッチ ON
+          </button>
         </div>
       )}
 
@@ -676,17 +682,26 @@ function App() {
           </div>
         )}
         <div className="game-board-container">
+          
           <div className="game-board circle-layout" onContextMenu={(e) => e.preventDefault()}>
+            {gameState.currentPhase === 'FINALIZED' && isMyTurnAsSeating && (
+              <button onClick={handleStandUp} className="heavy-btn stand-up-btn-center fade-in">
+                椅子を立つ
+              </button>
+            )}
+
             {Array.from({ length: TOTAL_CHAIRS }).map((_, i) => {
               const id = i + 1;
               const chair = gameState.chairs.find(c => c.id === id);
               const isRemoved = !chair;
-              const isProposed = gameState.proposedChairId === id;
+
+              const isProposed = (isMyTurnAsSeating ? localProposedChairId : gameState.proposedChairId) === id;
               const isSelected = gameState.selectedChairId === id;
               const isShocked = gameState.currentPhase === 'SHOCK' && gameState.shockChairId === id;
               const isWinner = gameState.currentPhase === 'SHOCK' && gameState.selectedChairId === id && !isShocked;
 
-              const isShockProposed = (gameState.proposedShockChairId === id || (gameState.currentPhase === 'CONFIRMING' && gameState.proposedShockChairId === id));
+              const effectiveProposedShockChairId = isMyTurnAsSwitch ? localProposedShockChairId : gameState.proposedShockChairId;
+              const isShockProposed = (effectiveProposedShockChairId === id || (gameState.currentPhase === 'CONFIRMING' && effectiveProposedShockChairId === id));
 
               // Circular position (Clock layout)
               const angle = (id * 30) - 90; // 12 -> 360-90=270, 1 -> 30-90=-60
@@ -738,14 +753,14 @@ function App() {
               placeholder="心理戦の過程を記録してください..."
               value={myMessage}
               onChange={(e) => setMyMessage(e.target.value)}
-              disabled={gameState.currentPhase === 'SHOCK'}
+              disabled={gameState.currentPhase === 'SHOCK' || gameState.currentPhase === 'GAME_OVER'}
             />
           </div>
           <div className="message-box">
             <label className="mono"><LucideHistory size={12} /> 公開された思考ログ</label>
             <div className="message-display mono history-mode">
               {gameState.thoughtHistory && gameState.thoughtHistory.length > 0 ? (
-                gameState.thoughtHistory.map((log) => (
+                [...gameState.thoughtHistory].reverse().map((log) => (
                   <div key={log.id} className="history-item">
                     <div className="history-meta">
                       <span className="log-tag">{log.tag}</span>
