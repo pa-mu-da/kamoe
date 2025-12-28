@@ -250,7 +250,7 @@ function App() {
   };
 
   const handleFinalizeShock = () => {
-    if (gameState.currentPhase !== 'PREPARE' || playerId !== gameState.switchSide || !gameState.proposedShockChairId) return;
+    if ((gameState.currentPhase !== 'PREPARE' && gameState.currentPhase !== 'CONFIRMING') || playerId !== gameState.switchSide || !gameState.proposedShockChairId) return;
 
     gsap.to('.phase-banner', { color: '#ff3e3e', repeat: 3, yoyo: true, duration: 0.1 });
 
@@ -532,7 +532,7 @@ function App() {
         </div>
       )}
 
-      {gameState.currentPhase === 'CONFIRMING' && (
+      {gameState.currentPhase === 'CONFIRMING' && ((gameState.proposedShockChairId && isMyTurnAsSwitch) || (gameState.proposedChairId && isMyTurnAsSeating)) && (
         <div className="confirmation-overlay">
           <div className="confirmation-card glass">
             <div className="big-number">
@@ -540,17 +540,15 @@ function App() {
             </div>
             <div className="confirm-text">
               {gameState.proposedShockChairId ? (
-                isMyTurnAsSwitch ? <>この椅子に仕掛けますか？</> : <span className="dots-animation">対戦相手が罠を仕掛けています</span>
+                <>この椅子に仕掛けますか？</>
               ) : (
-                isMyTurnAsSeating ? <>この椅子に座りますか？</> : <span className="dots-animation">対戦相手が椅子を選んでいます</span>
+                <>この椅子に座りますか？</>
               )}
             </div>
-            {((gameState.proposedShockChairId && isMyTurnAsSwitch) || (gameState.proposedChairId && isMyTurnAsSeating)) && (
-              <div className="confirm-actions">
-                <button className="btn-yes" onClick={gameState.proposedShockChairId ? handleFinalizeShock : handleFinalizeChair}>はい</button>
-                <button className="btn-no" onClick={handleCancelConfirm}>いいえ</button>
-              </div>
-            )}
+            <div className="confirm-actions">
+              <button className="btn-yes" onClick={gameState.proposedShockChairId ? handleFinalizeShock : handleFinalizeChair}>はい</button>
+              <button className="btn-no" onClick={handleCancelConfirm}>いいえ</button>
+            </div>
           </div>
         </div>
       )}
@@ -658,12 +656,7 @@ function App() {
         {gameState.currentPhase === 'PREPARE' && (
           isMyTurnAsSwitch ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: '2rem', justifyContent: 'center' }}>
-              <span>罠を仕掛ける椅子を選んでください</span>
-              {gameState.proposedShockChairId && (
-                <button onClick={handleFinalizeShock} className="heavy-btn" style={{ padding: '0.5rem 1rem', fontSize: '1rem' }}>
-                  {gameState.proposedShockChairId}番に確定
-                </button>
-              )}
+              <span>罠を仕掛ける椅子をダブルクリックしてください</span>
             </div>
           ) : '相手が罠を仕掛けています...'
         )}
@@ -676,7 +669,7 @@ function App() {
       </div>
 
       <div className="game-board-area">
-        {gameState.currentPhase === 'PREPARE' && isMyTurnAsSeating && (
+        {(gameState.currentPhase === 'PREPARE' || (gameState.currentPhase === 'CONFIRMING' && gameState.proposedShockChairId)) && isMyTurnAsSeating && (
           <div className="board-overlay fade-in">
             <div className="big-number">?</div>
             <div className="confirm-text">対戦相手が罠を仕掛けています...</div>
@@ -695,8 +688,8 @@ function App() {
 
               const isShockProposed = (gameState.proposedShockChairId === id || (gameState.currentPhase === 'CONFIRMING' && gameState.proposedShockChairId === id));
 
-              // Circular position
-              const angle = (i * (360 / TOTAL_CHAIRS)) - 90; // Start from top (-90deg)
+              // Circular position (Clock layout)
+              const angle = (id * 30) - 90; // 12 -> 360-90=270, 1 -> 30-90=-60
               const style = {
                 transform: `rotate(${angle}deg) translate(min(35vw, 300px)) rotate(${-angle}deg)`,
                 opacity: isRemoved ? 0.1 : 1,
@@ -740,7 +733,7 @@ function App() {
 
         <div className="message-areas">
           <div className="message-box">
-            <label className="mono"><LucideInfo size={12} /> 思考ログ (非公開)</label>
+            <label className="mono"><LucideInfo size={12} /> 思考ログ (未公開)</label>
             <textarea
               placeholder="心理戦の過程を記録してください..."
               value={myMessage}
