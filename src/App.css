@@ -123,15 +123,9 @@
   color: white;
 }
 
-.chair.shocked {
-  border-color: var(--accent-red);
-  box-shadow: 0 0 40px rgba(255, 62, 62, 0.6);
-}
 
-.chair.safe {
-  background: var(--success);
-  color: black;
-}
+
+
 
 .chair.shock-proposing {
   border-color: var(--accent-red);
@@ -599,16 +593,12 @@
 
 
 /* Remove special safe chair effect to keep it looking like other chairs */
-.chair.safe {
-  /* No special background, inherits glass/off state */
-}
 
 
 
 
-.chair.safe {
-  /* Keep it simple */
-}
+
+
 
 .game-board-container {
   display: flex;

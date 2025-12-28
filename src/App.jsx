@@ -112,20 +112,6 @@ function App() {
           ease: 'none',
           onComplete: () => gsap.to('.visual-fx-layer', { backgroundColor: 'transparent', duration: 0.5 })
         });
-        gsap.to('.chair.shocked', {
-          scale: 1.2,
-          boxShadow: '0 0 100px #ff3e3e',
-          duration: 0.1,
-          repeat: 10,
-          yoyo: true
-        });
-      } else {
-        gsap.to('.chair.safe', {
-          backgroundColor: '#00ff88',
-          scale: 1.1,
-          duration: 0.5,
-          ease: 'elastic.out'
-        });
       }
     }
 
@@ -682,7 +668,7 @@ function App() {
           </div>
         )}
         <div className="game-board-container">
-          
+
           <div className="game-board circle-layout" onContextMenu={(e) => e.preventDefault()}>
             {gameState.currentPhase === 'FINALIZED' && isMyTurnAsSeating && (
               <button onClick={handleStandUp} className="heavy-btn stand-up-btn-center fade-in">
