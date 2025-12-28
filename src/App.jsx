@@ -267,8 +267,28 @@ function App() {
   };
 
   const handleCancelShock = () => {
-    const newState = { ...gameState, proposedShockChairId: null };
+    const newState = { ...gameState, proposedShockChairId: null, currentPhase: 'PREPARE' };
     updateRemoteState(newState);
+  };
+
+  const handleStandUp = () => {
+    if (gameState.currentPhase !== 'FINALIZED' || playerId !== gameState.seatingSide) return;
+    const name = playerId === gameState.p1 ? gameState.names.p1 : gameState.names.p2;
+    const newState = {
+      ...gameState,
+      currentPhase: 'SELECT',
+      selectedChairId: null,
+      proposedChairId: null,
+      statusMessage: `${name} は椅子を立ちました`
+    };
+    updateRemoteState(newState);
+    // Clear message after 3 seconds
+    setTimeout(async () => {
+      const { data } = await supabase.from('rooms').select('state').eq('id', room.id).single();
+      if (data && data.state.statusMessage) {
+        updateRemoteState({ ...data.state, statusMessage: null });
+      }
+    }, 3000);
   };
 
   const handleProposeChair = (chairId) => {
@@ -278,13 +298,20 @@ function App() {
   };
 
   const handleAskConfirm = (chairId) => {
-    if (gameState.currentPhase !== 'SELECT' || playerId !== gameState.seatingSide) return;
-    const newState = { ...gameState, proposedChairId: chairId, currentPhase: 'CONFIRMING' };
-    updateRemoteState(newState);
+    if (gameState.currentPhase === 'SELECT' && playerId === gameState.seatingSide) {
+      const newState = { ...gameState, proposedChairId: chairId, currentPhase: 'CONFIRMING' };
+      updateRemoteState(newState);
+    } else if (gameState.currentPhase === 'PREPARE' && playerId === gameState.switchSide) {
+      const newState = { ...gameState, proposedShockChairId: chairId, currentPhase: 'CONFIRMING' };
+      updateRemoteState(newState);
+    }
   };
 
   const handleCancelConfirm = () => {
-    const newState = { ...gameState, currentPhase: 'SELECT' };
+    const newState = {
+      ...gameState,
+      currentPhase: gameState.currentPhase === 'CONFIRMING' && gameState.proposedShockChairId ? 'PREPARE' : 'SELECT'
+    };
     updateRemoteState(newState);
   };
 
@@ -356,8 +383,9 @@ function App() {
       newState.scores[seatingPid] += chairNum;
     }
 
-    // Remove chair in BOTH cases as requested by user
-    newState.chairs = newState.chairs.filter(c => c.id !== chairNum);
+    if (!isShocked) {
+      newState.chairs = newState.chairs.filter(c => c.id !== chairNum);
+    }
 
     // Record to history
     newState.history.push({
@@ -365,7 +393,8 @@ function App() {
       isUra: newState.isUra,
       seatingSide: seatingPid,
       score: isShocked ? 0 : chairNum,
-      isShocked: isShocked
+      isShocked: isShocked,
+      chairId: chairNum // Store which chair was picked
     });
 
     const p1Lose = newState.shocks.p1 >= MAX_SHOCKS;
@@ -465,7 +494,12 @@ function App() {
 
                     const renderCell = (historyItem) => {
                       if (!historyItem) return <span style={{ opacity: 0.2 }}>-</span>;
-                      if (historyItem.isShocked) return <LucideZap size={14} color="var(--accent-red)" />;
+                      if (historyItem.isShocked) return (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                          <LucideZap size={14} color="var(--accent-red)" />
+                          <span style={{ fontSize: '0.7rem', color: 'var(--accent-red)' }}>({historyItem.chairId})</span>
+                        </div>
+                      );
                       return historyItem.score;
                     };
 
@@ -501,17 +535,19 @@ function App() {
       {gameState.currentPhase === 'CONFIRMING' && (
         <div className="confirmation-overlay">
           <div className="confirmation-card glass">
-            <div className="big-number">{gameState.proposedChairId}</div>
+            <div className="big-number">
+              {gameState.proposedShockChairId || gameState.proposedChairId}
+            </div>
             <div className="confirm-text">
-              {isMyTurnAsSeating ? (
-                <>この椅子に座りますか？</>
+              {gameState.proposedShockChairId ? (
+                isMyTurnAsSwitch ? <>この椅子に仕掛けますか？</> : <span className="dots-animation">対戦相手が罠を仕掛けています</span>
               ) : (
-                <span className="dots-animation">対戦相手がこの椅子に座ろうとしています</span>
+                isMyTurnAsSeating ? <>この椅子に座りますか？</> : <span className="dots-animation">対戦相手が椅子を選んでいます</span>
               )}
             </div>
-            {isMyTurnAsSeating && (
+            {((gameState.proposedShockChairId && isMyTurnAsSwitch) || (gameState.proposedChairId && isMyTurnAsSeating)) && (
               <div className="confirm-actions">
-                <button className="btn-yes" onClick={handleFinalizeChair}>はい</button>
+                <button className="btn-yes" onClick={gameState.proposedShockChairId ? handleFinalizeShock : handleFinalizeChair}>はい</button>
                 <button className="btn-no" onClick={handleCancelConfirm}>いいえ</button>
               </div>
             )}
@@ -603,12 +639,17 @@ function App() {
         </div>
       </div>
 
-      {/* Moved Shock Button Position */}
-      {gameState.currentPhase === 'FINALIZED' && isMyTurnAsSwitch && (
+      {gameState.currentPhase === 'FINALIZED' && (
         <div className="shock-button-container top-position">
-          <button onClick={handlePushButton} className="heavy-btn huge">
-            電撃スイッチ ON
-          </button>
+          {isMyTurnAsSwitch ? (
+            <button onClick={handlePushButton} className="heavy-btn huge">
+              電撃スイッチ ON
+            </button>
+          ) : isMyTurnAsSeating && (
+            <button onClick={handleStandUp} className="heavy-btn huge stand-up-btn">
+              椅子を立つ
+            </button>
+          )}
         </div>
       )}
 
@@ -629,6 +670,7 @@ function App() {
         {gameState.currentPhase === 'SELECT' && (isMyTurnAsSeating ? '座る椅子を選択してください' : '相手が椅子を吟味しています...')}
         {gameState.currentPhase === 'CONFIRMING' && (isMyTurnAsSeating ? '最終確認中...' : '相手が座る椅子を決めようとしています...')}
         {gameState.currentPhase === 'FINALIZED' && (isMyTurnAsSeating ? '着席完了。運命を待ちなさい。' : '相手が着席しました。ボタンを押せ。')}
+        {gameState.statusMessage && <div className="status-msg fade-in">{gameState.statusMessage}</div>}
         {gameState.currentPhase === 'SHOCK' && getOutcomeText()}
         {gameState.currentPhase === 'GAME_OVER' && 'ゲーム終了'}
       </div>
@@ -640,41 +682,52 @@ function App() {
             <div className="confirm-text">対戦相手が罠を仕掛けています...</div>
           </div>
         )}
-        <div className="game-board" onContextMenu={(e) => e.preventDefault()}>
-          {Array.from({ length: TOTAL_CHAIRS }).map((_, i) => {
-            const id = i + 1;
-            const chair = gameState.chairs.find(c => c.id === id);
-            const isRemoved = !chair;
-            const isProposed = gameState.proposedChairId === id;
-            const isSelected = gameState.selectedChairId === id;
-            const isShocked = gameState.currentPhase === 'SHOCK' && gameState.shockChairId === id;
-            const isWinner = gameState.currentPhase === 'SHOCK' && gameState.selectedChairId === id && !isShocked;
+        <div className="game-board-container">
+          <div className="game-board circle-layout" onContextMenu={(e) => e.preventDefault()}>
+            {Array.from({ length: TOTAL_CHAIRS }).map((_, i) => {
+              const id = i + 1;
+              const chair = gameState.chairs.find(c => c.id === id);
+              const isRemoved = !chair;
+              const isProposed = gameState.proposedChairId === id;
+              const isSelected = gameState.selectedChairId === id;
+              const isShocked = gameState.currentPhase === 'SHOCK' && gameState.shockChairId === id;
+              const isWinner = gameState.currentPhase === 'SHOCK' && gameState.selectedChairId === id && !isShocked;
 
-            const isShockProposed = gameState.proposedShockChairId === id;
+              const isShockProposed = (gameState.proposedShockChairId === id || (gameState.currentPhase === 'CONFIRMING' && gameState.proposedShockChairId === id));
 
-            return (
-              <div
-                key={id}
-                className={`chair glass ${isProposed ? 'selecting' : ''} ${isSelected ? 'seated' : ''} ${isShocked ? 'shocked' : ''} ${isWinner ? 'safe' : ''} ${isMyTurnAsSwitch && isShockProposed ? 'shock-proposing' : ''}`}
-                style={{ opacity: isRemoved ? 0.1 : 1, cursor: isRemoved ? 'default' : 'pointer' }}
-                onClick={() => {
-                  if (isRemoved) return;
-                  if (gameState.currentPhase === 'PREPARE') handleSetShock(id);
-                  if (gameState.currentPhase === 'SELECT') handleProposeChair(id);
-                }}
-                onDoubleClick={() => {
-                  if (isRemoved) return;
-                  if (gameState.currentPhase === 'SELECT') handleAskConfirm(id);
-                }}
-              >
-                <div className="chair-number mono">{id}</div>
-                <div className="chair-label mono">{isRemoved ? 'VOID' : 'ACTIVE'}</div>
-                {isMyTurnAsSwitch && gameState.shockChairId === id && (
-                  <LucideZap size={16} color="var(--accent-red)" style={{ marginTop: '0.5rem' }} />
-                )}
-              </div>
-            );
-          })}
+              // Circular position
+              const angle = (i * (360 / TOTAL_CHAIRS)) - 90; // Start from top (-90deg)
+              const style = {
+                transform: `rotate(${angle}deg) translate(min(35vw, 300px)) rotate(${-angle}deg)`,
+                opacity: isRemoved ? 0.1 : 1,
+                cursor: isRemoved ? 'default' : 'pointer'
+              };
+
+              return (
+                <div
+                  key={id}
+                  className={`chair glass ${isProposed ? 'selecting' : ''} ${isSelected ? 'seated' : ''} ${isShocked ? 'shocked' : ''} ${isWinner ? 'safe' : ''} ${isMyTurnAsSwitch && isShockProposed ? 'shock-proposing' : ''}`}
+                  style={style}
+                  onClick={() => {
+                    if (isRemoved) return;
+                    if (gameState.currentPhase === 'PREPARE') handleSetShock(id);
+                    if (gameState.currentPhase === 'SELECT') handleProposeChair(id);
+                  }}
+                  onDoubleClick={() => {
+                    if (isRemoved) return;
+                    if (gameState.currentPhase === 'PREPARE') handleAskConfirm(id);
+                    if (gameState.currentPhase === 'SELECT') handleAskConfirm(id);
+                  }}
+                >
+                  <div className="chair-number mono">{id}</div>
+                  <div className="chair-label mono">{isRemoved ? 'VOID' : 'ACTIVE'}</div>
+                  {isMyTurnAsSwitch && gameState.shockChairId === id && (
+                    <LucideZap size={16} color="var(--accent-red)" style={{ marginTop: '0.5rem' }} />
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
 
