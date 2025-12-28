@@ -15,6 +15,7 @@ function App() {
   const [gameState, setGameState] = useState(null);
   const [myMessage, setMyMessage] = useState('');
   const [showScoreboard, setShowScoreboard] = useState(false);
+  const [localName, setLocalName] = useState('');
 
   // Initialize Player ID
   useEffect(() => {
@@ -25,6 +26,27 @@ function App() {
     }
     setPlayerId(pid);
   }, []);
+
+  // Sync initial name when gameState loads
+  useEffect(() => {
+    if (gameState && localName === '') {
+      const initialName = playerId === gameState.p1 ? gameState.names.p1 : gameState.names.p2;
+      setLocalName(initialName);
+    }
+  }, [gameState, playerId]);
+
+  // Debounced Name Sync
+  useEffect(() => {
+    if (!gameState || !localName || localName === (playerId === gameState.p1 ? gameState.names.p1 : gameState.names.p2)) return;
+
+    const timer = setTimeout(() => {
+      const key = playerId === gameState.p1 ? 'p1' : 'p2';
+      const updatedNames = { ...gameState.names, [key]: localName };
+      updateRemoteState({ ...gameState, names: updatedNames });
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [localName]);
 
   // Supabase Subscription
   useEffect(() => {
@@ -489,14 +511,8 @@ function App() {
               <label className="mono" style={{ fontSize: '0.8rem', opacity: 0.7 }}>あなたの名前を表示:</label>
               <input
                 type="text"
-                value={playerId === gameState.p1 ? gameState.names.p1 : gameState.names.p2}
-                onChange={(e) => {
-                  const key = playerId === gameState.p1 ? 'p1' : 'p2';
-                  updateRemoteState({
-                    ...gameState,
-                    names: { ...gameState.names, [key]: e.target.value }
-                  });
-                }}
+                value={localName}
+                onChange={(e) => setLocalName(e.target.value)}
                 className="mono"
                 style={{ width: '100%', padding: '0.8rem', marginTop: '0.5rem', background: 'rgba(255,255,255,0.05)', border: '1px solid #444', color: 'white' }}
                 placeholder="名前を入力..."
