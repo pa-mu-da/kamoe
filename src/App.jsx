@@ -393,6 +393,22 @@ function App() {
       chairId: chairNum // Store which chair was picked
     });
 
+    // Add system summary message
+    const switchName = newState.switchSide === newState.p1 ? newState.names.p1 : newState.names.p2;
+    const seatingName = newState.seatingSide === newState.p1 ? newState.names.p1 : newState.names.p2;
+    const roundTag = `${newState.currentRound}回戦 ${newState.isUra ? '裏' : '表'}`;
+    const resultText = isShocked ? '感電' : '生存';
+
+    const systemMsg = {
+      id: Date.now() + '_sys',
+      name: 'SYSTEM',
+      message: `${roundTag}：${switchName}が${newState.shockChairId}番に罠を仕掛け、${seatingName}が${chairNum}番に座った。結果：${resultText}`,
+      tag: 'NOTICE',
+      isSystem: true
+    };
+
+    newState.thoughtHistory = [...(newState.thoughtHistory || []), systemMsg];
+
     const p1Lose = newState.shocks.p1 >= MAX_SHOCKS;
     const p2Lose = newState.shocks.p2 >= MAX_SHOCKS;
     const p1Win = newState.scores.p1 >= WIN_SCORE;
@@ -530,26 +546,47 @@ function App() {
         </div>
       )}
 
-      {gameState.currentPhase === 'CONFIRMING' && ((gameState.proposedShockChairId && isMyTurnAsSwitch) || (gameState.proposedChairId && isMyTurnAsSeating)) && (
-        <div className="confirmation-overlay">
-          <div className="confirmation-card glass">
-            <div className="big-number">
-              {gameState.proposedShockChairId || gameState.proposedChairId}
-            </div>
-            <div className="confirm-text">
-              {gameState.proposedShockChairId ? (
-                <>この椅子に仕掛けますか？</>
-              ) : (
-                <>この椅子に座りますか？</>
+      {gameState.currentPhase === 'CONFIRMING' && (
+        (gameState.proposedShockChairId && isMyTurnAsSwitch) ||
+        (gameState.proposedChairId && (isMyTurnAsSeating || isMyTurnAsSwitch))
+      ) && (
+          <div className="confirmation-overlay">
+            <div className="confirmation-card glass">
+              {/* Case 1: Switching side is confirming their trap */}
+              {gameState.proposedShockChairId && isMyTurnAsSwitch && (
+                <>
+                  <div className="big-number">{gameState.proposedShockChairId}</div>
+                  <div className="confirm-text">この椅子に仕掛けますか？</div>
+                  <div className="confirm-actions">
+                    <button className="btn-yes" onClick={handleFinalizeShock}>はい</button>
+                    <button className="btn-no" onClick={handleCancelConfirm}>いいえ</button>
+                  </div>
+                </>
+              )}
+
+              {/* Case 2: Seating side is confirming their chair */}
+              {gameState.proposedChairId && (
+                isMyTurnAsSeating ? (
+                  <>
+                    <div className="big-number">{gameState.proposedChairId}</div>
+                    <div className="confirm-text">この椅子に座りますか？</div>
+                    <div className="confirm-actions">
+                      <button className="btn-yes" onClick={handleFinalizeChair}>はい</button>
+                      <button className="btn-no" onClick={handleCancelConfirm}>いいえ</button>
+                    </div>
+                  </>
+                ) : isMyTurnAsSwitch ? (
+                  <>
+                    <div className="big-number">{gameState.proposedChairId}</div>
+                    <div className="confirm-text dots-animation left-align">
+                      {gameState.seatingSide === gameState.p1 ? gameState.names.p1 : gameState.names.p2}がこの椅子に座ろうとしています
+                    </div>
+                  </>
+                ) : null
               )}
             </div>
-            <div className="confirm-actions">
-              <button className="btn-yes" onClick={gameState.proposedShockChairId ? handleFinalizeShock : handleFinalizeChair}>はい</button>
-              <button className="btn-no" onClick={handleCancelConfirm}>いいえ</button>
-            </div>
           </div>
-        </div>
-      )}
+        )}
 
       {/* Role Selection Modal */}
       {gameState.currentPhase === 'ROLE_SELECT' && (
@@ -691,8 +728,10 @@ function App() {
 
               // Circular position (Clock layout)
               const angle = (id * 30) - 90; // 12 -> 360-90=270, 1 -> 30-90=-60
+              const baseTransform = `rotate(${angle}deg) translate(min(35vw, 300px)) rotate(${-angle}deg)`;
               const style = {
-                transform: `rotate(${angle}deg) translate(min(35vw, 300px)) rotate(${-angle}deg)`,
+                '--base-transform': baseTransform,
+                transform: baseTransform,
                 opacity: isRemoved ? 0.1 : 1,
                 cursor: isRemoved ? 'default' : 'pointer'
               };
@@ -715,8 +754,10 @@ function App() {
                 >
                   <div className="chair-number mono">{id}</div>
                   <div className="chair-label mono">{isRemoved ? 'VOID' : 'ACTIVE'}</div>
-                  {isMyTurnAsSwitch && gameState.shockChairId === id && (
-                    <LucideZap size={16} color="var(--accent-red)" style={{ marginTop: '0.5rem' }} />
+                  {isMyTurnAsSwitch && gameState.shockChairId === id && gameState.currentPhase !== 'SHOCK' && (
+                    <div className="trap-icon-overlay">
+                      <LucideZap size={32} />
+                    </div>
                   )}
                 </div>
               );
@@ -746,8 +787,8 @@ function App() {
             <label className="mono"><LucideHistory size={12} /> 公開された思考ログ</label>
             <div className="message-display mono history-mode">
               {gameState.thoughtHistory && gameState.thoughtHistory.length > 0 ? (
-                [...gameState.thoughtHistory].reverse().map((log) => (
-                  <div key={log.id} className="history-item">
+                gameState.thoughtHistory.map((log) => (
+                  <div key={log.id} className={`history-item ${log.isSystem ? 'system-log' : ''}`}>
                     <div className="history-meta">
                       <span className="log-tag">{log.tag}</span>
                       <span className="log-name">{log.name}</span>
