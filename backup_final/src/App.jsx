@@ -18,32 +18,6 @@ function App() {
   const [localName, setLocalName] = useState('');
   const [localProposedChairId, setLocalProposedChairId] = useState(null);
   const [localProposedShockChairId, setLocalProposedShockChairId] = useState(null);
-  const [isSpectator, setIsSpectator] = useState(false);
-
-  // Initialize Spectator Mode from URL
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const specCode = params.get('spectate');
-    if (specCode) {
-      setIsSpectator(true);
-      joinAsSpectator(specCode);
-    }
-  }, []);
-
-  const joinAsSpectator = async (code) => {
-    const { data, error } = await supabase
-      .from('rooms')
-      .select()
-      .eq('code', code)
-      .single();
-
-    if (error || !data) {
-      alert('観戦対象のルームが見つかりません');
-      return;
-    }
-    setRoom(data);
-    setGameState(data.state);
-  };
 
   // Initialize Player ID
   useEffect(() => {
@@ -113,36 +87,8 @@ function App() {
 
   useEffect(() => {
     if (!room) {
-      // Entrance animation
-      gsap.from('.auth-container', {
-        duration: 1.5,
-        opacity: 0,
-        y: 30,
-        ease: 'power4.out',
-        delay: 0.5
-      });
-
-      // Logo specific animations
-      const tl = gsap.timeline({ repeat: -1 });
-      tl.to('.death-game-logo-masked', {
-        filter: 'drop-shadow(0 0 20px rgba(255, 62, 62, 0.7)) brightness(1.1)',
-        duration: 2,
-        ease: 'sine.inOut'
-      })
-        .to('.death-game-logo-masked', {
-          filter: 'drop-shadow(0 0 40px rgba(255, 62, 62, 1)) brightness(1.4)',
-          duration: 2,
-          ease: 'sine.inOut'
-        });
-
-      // Background flicker
-      gsap.to('.auth-container', {
-        borderColor: 'rgba(255, 62, 62, 0.2)',
-        duration: 0.1,
-        repeat: -1,
-        yoyo: true,
-        repeatDelay: Math.random() * 5
-      });
+      gsap.from('.death-game-logo', { y: -50, opacity: 0, duration: 2, ease: 'expo.out' });
+      gsap.to('.death-game-logo', { filter: 'drop-shadow(0 0 20px rgba(255, 62, 62, 0.8))', repeat: -1, yoyo: true, duration: 1 });
     }
   }, [room]);
 
@@ -501,51 +447,24 @@ function App() {
   // UI Components
   if (!room) {
     return (
-      <div className="auth-container glass fade-in landing-screen">
-        <div className="logo-wrapper">
-          <div className="death-game-logo-masked"></div>
-          <div className="logo-glitch-overlay"></div>
-        </div>
+      <div className="auth-container glass fade-in">
+        <h1 className="death-game-logo" style={{ fontFamily: 'Zen Dots, sans-serif' }}>電気椅子</h1>
+        <p className="mono" style={{ color: 'var(--accent-red)', fontWeight: 'bold' }}>ONLINE SURVIVAL SYSTEM</p>
 
-        <div className="landing-subtitle">
-          <span className="scramble-text">ONLINE SURVIVAL SYSTEM</span>
-          <div className="status-line">
-            <span className="dot pulse"></span>
-            <span className="mono">CONNECTION: STABLE</span>
+        <div className="auth-actions" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', marginTop: '2rem' }}>
+          <button onClick={createRoom} className="heavy-btn">セッション作成</button>
+
+          <div className="join-form">
+            <input
+              type="text"
+              placeholder="6桁のコード"
+              value={roomCode}
+              onChange={(e) => setRoomCode(e.target.value)}
+              className="mono"
+            />
+            <button onClick={joinRoom}>参加</button>
           </div>
         </div>
-
-        <div className="auth-actions-pnl">
-          <button onClick={createRoom} className="heavy-btn mega-btn">
-            <span className="btn-label">SESSION CREATE</span>
-            <span className="btn-subtext">新規セッションの構築</span>
-          </button>
-
-          <div className="divider">
-            <span>OR</span>
-          </div>
-
-          <div className="join-form-v2">
-            <div className="input-group">
-              <input
-                type="text"
-                placeholder="000000"
-                value={roomCode}
-                onChange={(e) => setRoomCode(e.target.value)}
-                className="mono room-input"
-                maxLength={6}
-              />
-              <div className="input-focus-border"></div>
-            </div>
-            <button onClick={joinRoom} className="join-btn">
-              JOIN
-            </button>
-          </div>
-        </div>
-
-        <footer className="landing-footer mono">
-          &copy; 2025 NEURAL-LINK INTERFACE v2.4.0
-        </footer>
       </div>
     );
   }
@@ -556,138 +475,10 @@ function App() {
   const isMyTurnAsSeating = playerId === gameState.seatingSide;
   const myRole = isMyTurnAsSwitch ? '仕掛け側 (SWITCH)' : '着席側 (SEATING)';
 
-  const renderBoard = (viewerId, isMini = false) => {
-    const isSwitch = viewerId === gameState.switchSide;
-    const isSeating = viewerId === gameState.seatingSide;
-
-    return (
-      <div className={`game-board-area ${isMini ? 'mini-board' : ''}`}>
-        {(gameState.currentPhase === 'PREPARE' || (gameState.currentPhase === 'CONFIRMING' && gameState.proposedShockChairId)) && isSeating && (
-          <div className="board-overlay fade-in">
-            <div className="big-number">?</div>
-            <div className="confirm-text">対戦相手が罠を仕掛けています...</div>
-          </div>
-        )}
-        <div className="game-board-container">
-          <div className="game-board circle-layout" onContextMenu={(e) => e.preventDefault()}>
-            {!isSpectator && gameState.currentPhase === 'FINALIZED' && isSeating && (
-              <button onClick={handleStandUp} className="heavy-btn stand-up-btn-center fade-in">
-                椅子を立つ
-              </button>
-            )}
-
-            {Array.from({ length: TOTAL_CHAIRS }).map((_, i) => {
-              const id = i + 1;
-              const chair = gameState.chairs.find(c => c.id === id);
-              const isRemoved = !chair;
-
-              const isProposed = (isSeating && !isSpectator ? localProposedChairId : gameState.proposedChairId) === id;
-              const isSelected = gameState.selectedChairId === id;
-              const isShocked = gameState.currentPhase === 'SHOCK' && gameState.shockChairId === id;
-              const isWinner = gameState.currentPhase === 'SHOCK' && gameState.selectedChairId === id && !isShocked;
-
-              const effectiveProposedShockChairId = isSwitch && !isSpectator ? localProposedShockChairId : gameState.proposedShockChairId;
-              const isShockProposed = (effectiveProposedShockChairId === id || (gameState.currentPhase === 'CONFIRMING' && effectiveProposedShockChairId === id));
-
-              // Circular position
-              const angle = (id * 30) - 90;
-              const radius = isMini ? 'min(30vw, 150px)' : 'min(35vw, 300px)';
-              const baseTransform = `rotate(${angle}deg) translate(${radius}) rotate(${-angle}deg)`;
-              const style = {
-                '--base-transform': baseTransform,
-                transform: baseTransform,
-                opacity: isRemoved ? 0.1 : 1,
-                cursor: isRemoved || isSpectator ? 'default' : 'pointer'
-              };
-
-              return (
-                <div
-                  key={id}
-                  className={`chair glass ${isProposed ? 'selecting' : ''} ${isSelected ? 'seated' : ''} ${isShocked ? 'shocked' : ''} ${isWinner ? 'safe' : ''} ${isSwitch && isShockProposed ? 'shock-proposing' : ''}`}
-                  style={style}
-                  onClick={() => {
-                    if (isSpectator || isRemoved) return;
-                    if (gameState.currentPhase === 'PREPARE') handleSetShock(id);
-                    if (gameState.currentPhase === 'SELECT') handleProposeChair(id);
-                  }}
-                  onDoubleClick={() => {
-                    if (isSpectator || isRemoved) return;
-                    if (gameState.currentPhase === 'PREPARE') handleAskConfirm(id);
-                    if (gameState.currentPhase === 'SELECT') handleAskConfirm(id);
-                  }}
-                >
-                  <div className="chair-number mono">{id}</div>
-                  <div className="chair-label mono">{isRemoved ? 'VOID' : 'ACTIVE'}</div>
-                  {isSwitch && gameState.shockChairId === id && gameState.currentPhase !== 'SHOCK' && (
-                    <div className="trap-icon-overlay">
-                      <LucideZap size={isMini ? 16 : 32} />
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-    );
+  const getOutcomeText = () => {
+    if (gameState.currentPhase !== 'SHOCK') return '';
+    return gameState.lastResult.safe ? '生存' : '感 電';
   };
-
-  if (isSpectator) {
-    return (
-      <div className="app-container spectator-layout fade-in">
-        <header className="room-info glass">
-          <div className="mono">ROOM: {room.code} (SPECTATING)</div>
-          <div className="mono" style={{ color: 'var(--accent-yellow)' }}>
-            {gameState.currentRound}回戦 {gameState.isUra ? '裏' : '表'}
-          </div>
-        </header>
-
-        <div className="game-stats">
-          <div className={`player-card glass ${gameState.seatingSide === gameState.p1 ? 'is-active' : ''}`}>
-            <div className="mono label">{gameState.names.p1} {gameState.switchSide === gameState.p1 ? '(SWITCH)' : '(SEATING)'}</div>
-            <div className="score-value mono">{gameState.scores.p1}</div>
-          </div>
-          <div className={`player-card glass ${gameState.seatingSide === gameState.p2 ? 'is-active' : ''}`}>
-            <div className="mono label">{gameState.names.p2} {gameState.switchSide === gameState.p2 ? '(SWITCH)' : '(SEATING)'}</div>
-            <div className="score-value mono">{gameState.scores.p2}</div>
-          </div>
-        </div>
-
-        <div className="spectator-main">
-          <div className="perspective-box">
-            <h3 className="mono">{gameState.names.p1}の視点</h3>
-            {renderBoard(gameState.p1, true)}
-          </div>
-          <div className="perspective-box">
-            <h3 className="mono">{gameState.names.p2}の視点</h3>
-            {renderBoard(gameState.p2, true)}
-          </div>
-        </div>
-
-        <div className="control-panel glass spectator-logs">
-          <div className="message-box">
-            <label className="mono"><LucideHistory size={12} /> 公開された思考ログ</label>
-            <div className="message-display mono history-mode">
-              {gameState.thoughtHistory && gameState.thoughtHistory.length > 0 ? (
-                gameState.thoughtHistory.map((log) => (
-                  <div key={log.id} className={`history-item ${log.isSystem ? 'system-log' : ''}`}>
-                    <div className="history-meta">
-                      <span className="log-tag">{log.tag}</span>
-                      <span className="log-name">{log.name}</span>
-                    </div>
-                    <div className="log-content">{log.message}</div>
-                  </div>
-                ))
-              ) : (
-                <div style={{ opacity: 0.3 }}>ターン終了時にログが公開されます</div>
-              )}
-            </div>
-          </div>
-        </div>
-        <div className="visual-fx-layer"></div>
-      </div>
-    );
-  }
 
   return (
     <div className="app-container fade-in">
@@ -847,11 +638,9 @@ function App() {
         <div className="mono" style={{ color: 'var(--accent-yellow)' }}>
           {gameState.currentRound}回戦 {gameState.isUra ? '裏' : '表'}
         </div>
-        {!isSpectator && (
-          <div className="mono" style={{ color: isMyTurnAsSwitch || isMyTurnAsSeating ? 'var(--success)' : 'white' }}>
-            役割: {myRole}
-          </div>
-        )}
+        <div className="mono" style={{ color: isMyTurnAsSwitch || isMyTurnAsSeating ? 'var(--success)' : 'white' }}>
+          役割: {myRole}
+        </div>
       </header>
 
       <div className="game-stats">
@@ -908,7 +697,74 @@ function App() {
         {gameState.currentPhase === 'GAME_OVER' && 'ゲーム終了'}
       </div>
 
-      {renderBoard(playerId)}
+      <div className="game-board-area">
+        {(gameState.currentPhase === 'PREPARE' || (gameState.currentPhase === 'CONFIRMING' && gameState.proposedShockChairId)) && isMyTurnAsSeating && (
+          <div className="board-overlay fade-in">
+            <div className="big-number">?</div>
+            <div className="confirm-text">対戦相手が罠を仕掛けています...</div>
+          </div>
+        )}
+        <div className="game-board-container">
+
+          <div className="game-board circle-layout" onContextMenu={(e) => e.preventDefault()}>
+            {gameState.currentPhase === 'FINALIZED' && isMyTurnAsSeating && (
+              <button onClick={handleStandUp} className="heavy-btn stand-up-btn-center fade-in">
+                椅子を立つ
+              </button>
+            )}
+
+            {Array.from({ length: TOTAL_CHAIRS }).map((_, i) => {
+              const id = i + 1;
+              const chair = gameState.chairs.find(c => c.id === id);
+              const isRemoved = !chair;
+
+              const isProposed = (isMyTurnAsSeating ? localProposedChairId : gameState.proposedChairId) === id;
+              const isSelected = gameState.selectedChairId === id;
+              const isShocked = gameState.currentPhase === 'SHOCK' && gameState.shockChairId === id;
+              const isWinner = gameState.currentPhase === 'SHOCK' && gameState.selectedChairId === id && !isShocked;
+
+              const effectiveProposedShockChairId = isMyTurnAsSwitch ? localProposedShockChairId : gameState.proposedShockChairId;
+              const isShockProposed = (effectiveProposedShockChairId === id || (gameState.currentPhase === 'CONFIRMING' && effectiveProposedShockChairId === id));
+
+              // Circular position (Clock layout)
+              const angle = (id * 30) - 90; // 12 -> 360-90=270, 1 -> 30-90=-60
+              const baseTransform = `rotate(${angle}deg) translate(min(35vw, 300px)) rotate(${-angle}deg)`;
+              const style = {
+                '--base-transform': baseTransform,
+                transform: baseTransform,
+                opacity: isRemoved ? 0.1 : 1,
+                cursor: isRemoved ? 'default' : 'pointer'
+              };
+
+              return (
+                <div
+                  key={id}
+                  className={`chair glass ${isProposed ? 'selecting' : ''} ${isSelected ? 'seated' : ''} ${isShocked ? 'shocked' : ''} ${isWinner ? 'safe' : ''} ${isMyTurnAsSwitch && isShockProposed ? 'shock-proposing' : ''}`}
+                  style={style}
+                  onClick={() => {
+                    if (isRemoved) return;
+                    if (gameState.currentPhase === 'PREPARE') handleSetShock(id);
+                    if (gameState.currentPhase === 'SELECT') handleProposeChair(id);
+                  }}
+                  onDoubleClick={() => {
+                    if (isRemoved) return;
+                    if (gameState.currentPhase === 'PREPARE') handleAskConfirm(id);
+                    if (gameState.currentPhase === 'SELECT') handleAskConfirm(id);
+                  }}
+                >
+                  <div className="chair-number mono">{id}</div>
+                  <div className="chair-label mono">{isRemoved ? 'VOID' : 'ACTIVE'}</div>
+                  {isMyTurnAsSwitch && gameState.shockChairId === id && gameState.currentPhase !== 'SHOCK' && (
+                    <div className="trap-icon-overlay">
+                      <LucideZap size={32} />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
 
       <div className="control-panel glass">
         {gameState.currentPhase === 'GAME_OVER' && (
