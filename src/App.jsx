@@ -122,18 +122,7 @@ function App() {
         delay: 0.5
       });
 
-      // Logo specific animations
-      const tl = gsap.timeline({ repeat: -1 });
-      tl.to('.death-game-logo-masked', {
-        filter: 'drop-shadow(0 0 20px rgba(255, 62, 62, 0.7)) brightness(1.1)',
-        duration: 2,
-        ease: 'sine.inOut'
-      })
-        .to('.death-game-logo-masked', {
-          filter: 'drop-shadow(0 0 40px rgba(255, 62, 62, 1)) brightness(1.4)',
-          duration: 2,
-          ease: 'sine.inOut'
-        });
+      // Logo specific animations removed
 
       // Background flicker
       gsap.to('.auth-container', {
